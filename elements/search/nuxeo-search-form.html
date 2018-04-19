@@ -227,7 +227,6 @@ limitations under the License.
        quick-filters="{{quickFilters}}"
        schemas="[[schemas]]"
        loading="{{loading}}"
-       headers='{"X-NXfetch.document": "properties", "X-NXtranslate.directoryEntry": "label"}'
        fetch-aggregates
        on-error="_onError">
     </nuxeo-page-provider>
@@ -527,7 +526,7 @@ limitations under the License.
           if (this.queue) {
             this.$.list.fetch();
           } else if (this.auto) {
-            this.$.provider.fetch();
+            //this.$.provider.fetch();
           }
         }
       },
