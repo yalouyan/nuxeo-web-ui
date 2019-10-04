@@ -35,6 +35,23 @@ import { Polymer } from '@polymer/polymer/lib/legacy/polymer-fn.js';
 import { html } from '@polymer/polymer/lib/utils/html-tag.js';
 import { DocumentCreationBehavior } from '../nuxeo-document-creation/nuxeo-document-creation-behavior.js';
 
+function hook(action, element) {
+  const runHook = async (stage, ...args) => {
+    if (element && stage && action) {
+      const fnName = `${stage.toLocaleLowerCase()}${action}`;
+      if (element[fnName]) {
+        const res = element[fnName](...args);
+        return !res || res.constructor !== Promise ? Promise.resolve(res) : res;
+      }
+    }
+  };
+  return {
+    before: (...args) => runHook('before', ...args),
+    after: (...args) => runHook('after', ...args),
+    catch: (...args) => runHook('catch', ...args),
+  };
+}
+
 /**
 `nuxeo-document-create`
 @group Nuxeo UI
@@ -211,7 +228,7 @@ Polymer({
         </div>
         <div class="buttons horizontal end-justified layout">
           <div class="flex start-justified">
-            <paper-button noink dialog-dismiss on-tap="_cancel">[[i18n('command.cancel')]]</paper-button>
+            <paper-button noink on-tap="_cancel">[[i18n('command.cancel')]]</paper-button>
           </div>
         </div>
       </div>
@@ -250,9 +267,7 @@ Polymer({
         </div>
         <div class="buttons horizontal end-justified layout">
           <div class="flex start-justified">
-            <paper-button noink dialog-dismiss on-tap="_cancel" disabled$="[[creating]]"
-              >[[i18n('command.cancel')]]</paper-button
-            >
+            <paper-button noink on-tap="_cancel" disabled$="[[creating]]">[[i18n('command.cancel')]]</paper-button>
           </div>
           <paper-button noink on-tap="_back" disabled$="[[creating]]">[[i18n('command.back')]]</paper-button>
           <paper-button
@@ -347,37 +362,71 @@ Polymer({
     invalidField.focus();
   },
 
-  _create() {
+  get layout() {
+    return this.$['document-create'].$.layout.element;
+  },
+
+  async _create() {
     if (!this._validate() || !this.canCreate) {
       return;
     }
+
+    const submitHook = hook('Submit', this.layout);
+
+    if ((await submitHook.before()) === false) {
+      return;
+    }
+
     this.document.name = this.document.name || this._sanitizeName(this.document.properties['dc:title']);
     this.set('creating', true);
     this.$.docRequest
       .post()
-      .then((response) => {
+      .then(async (response) => {
         this.$.creationStats.storeType(this.selectedDocType.id);
         this._clear();
+        this.set('creating', false);
+        if ((await submitHook.after(response)) === false) {
+          return;
+        }
         this.navigateTo('browse', response.path);
         this._notify(response);
-        this.set('creating', false);
       })
-      .catch((err) => {
+      .catch(async (err) => {
         this.set('creating', false);
+        if ((await submitHook.catch(err)) === false) {
+          return;
+        }
         this.fire('notify', { message: this.i18n('documentCreationForm.createError') });
         console.error(err);
       });
   },
 
-  _back() {
-    this._clear();
-    this.fire('nx-creation-wizard-show-tabs');
+  async _back() {
+    const { before, after } = hook('Back', this.layout);
+    if ((await before()) !== false) {
+      this._clear();
+      this.fire('nx-creation-wizard-show-tabs');
+      after();
+    }
   },
 
-  _cancel() {
-    this._clear();
-    this.document = undefined;
-    this.fire('nx-creation-wizard-show-tabs');
+  async _cancel() {
+    if (!this.layout) {
+      this.fire('nx-creation-wizard-show-tabs');
+      this.fire('nx-document-creation-finished');
+    } else {
+      const { before, after } = hook('Cancel', this.layout);
+      if ((await before()) === false) {
+        return;
+      }
+      this._clear();
+      this.document = undefined;
+      if ((await after()) === false) {
+        return;
+      }
+      this.fire('nx-creation-wizard-show-tabs');
+      this.fire('nx-document-creation-finished');
+    }
   },
 
   _newDocumentLabel() {
