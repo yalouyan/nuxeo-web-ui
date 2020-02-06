@@ -207,16 +207,15 @@ Then(/^I can edit the (.*) Note$/, function(format) {
       page.view.noteEditor.textarea.setValue(newContent);
       page.view.noteEditor.save();
       page.view.preview.waitForVisible();
-      if (format === 'XML') {
-        const xmlContent = page.view.preview.element('#xml');
-        xmlContent.waitForVisible();
-        driver.waitUntil(() => xmlContent.getText() === newContent);
-      } else if (format === 'Markdown' || format === 'Text') {
-        page.view.preview.waitForVisible('marked-element #content');
-        const markedContent = page.view.preview.element('marked-element #content');
-        markedContent.waitForVisible();
-        driver.waitUntil(() => markedContent.getText() === newContent);
-      }
+      driver.waitUntil(() => {
+        try {
+          const elContent =
+            format === 'XML' ? page.view.preview.element('#xml') : page.view.preview.element('marked-element #content');
+          return elContent.isVisible() && elContent.getText() === newContent;
+        } catch (e) {
+          return false;
+        }
+      });
       break;
     default:
     // do nothing
